@@ -148,6 +148,44 @@ public class GeospatialController : ControllerBase
     }
 
     /// <summary>
+    /// Get relationship connections with coordinates for map line drawing
+    /// </summary>
+    [HttpGet("connections")]
+    public async Task<ActionResult> GetConnections([FromQuery] string? type = null)
+    {
+        var query = _context.Relationships
+            .Include(r => r.FromEntity)
+            .Include(r => r.ToEntity)
+            .Where(r => r.FromEntity.Latitude != null && r.FromEntity.Longitude != null
+                     && r.ToEntity.Latitude != null && r.ToEntity.Longitude != null);
+
+        if (!string.IsNullOrEmpty(type))
+            query = query.Where(r => r.Type == type);
+
+        var connections = await query.Select(r => new
+        {
+            from = new
+            {
+                id = r.FromEntityId,
+                name = r.FromEntity.Name,
+                entityType = r.FromEntity.Type,
+                coordinates = new[] { r.FromEntity.Longitude!.Value, r.FromEntity.Latitude!.Value }
+            },
+            to = new
+            {
+                id = r.ToEntityId,
+                name = r.ToEntity.Name,
+                entityType = r.ToEntity.Type,
+                coordinates = new[] { r.ToEntity.Longitude!.Value, r.ToEntity.Latitude!.Value }
+            },
+            relationshipType = r.Type,
+            createdAt = r.CreatedAt
+        }).ToListAsync();
+
+        return Ok(connections);
+    }
+
+    /// <summary>
     /// Get Mapbox configuration
     /// </summary>
     [HttpGet("config")]

@@ -212,6 +212,12 @@ select[multiple] {
     border: 2px solid #fff;
 }
 
+.map-legend-line {
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+}
+
 #timeline-container {
     flex: 1;
     overflow-y: auto;

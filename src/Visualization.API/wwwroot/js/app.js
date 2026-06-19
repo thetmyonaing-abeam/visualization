@@ -337,6 +337,9 @@ async function loadMapDataLeaflet(layer) {
         leafletMap.addLayer(markers);
         leafletLayers.push(markers);
 
+        // Draw connection lines between related entities
+        await loadConnectionLines(entityType);
+
         // Fit bounds to show all markers
         if (geoJson.features.length > 0) {
             const bounds = L.latLngBounds(
@@ -414,6 +417,63 @@ async function loadMapDataLeaflet(layer) {
             );
             leafletMap.fitBounds(bounds, { padding: [30, 30] });
         }
+    }
+}
+
+// --- Connection lines between entities ---
+const connectionColors = {
+    'FILED_CLAIM_AT': '#ff6b6b',
+    'REFERRED_TO': '#f39c12',
+    'KNOWS': '#4ecdc4',
+    'SAME_ADDRESS': '#9b59b6'
+};
+
+async function loadConnectionLines(entityTypeFilter) {
+    if (!leafletMap) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/api/geospatial/connections`);
+        const connections = await response.json();
+
+        const linesGroup = L.layerGroup();
+
+        connections.forEach(conn => {
+            // If entity type filter is set, only show connections involving that type
+            if (entityTypeFilter) {
+                if (conn.from.entityType !== entityTypeFilter && conn.to.entityType !== entityTypeFilter) {
+                    return;
+                }
+            }
+
+            const fromLatLng = [conn.from.coordinates[1], conn.from.coordinates[0]];
+            const toLatLng = [conn.to.coordinates[1], conn.to.coordinates[0]];
+            const color = connectionColors[conn.relationshipType] || '#888';
+
+            const line = L.polyline([fromLatLng, toLatLng], {
+                color: color,
+                weight: 2,
+                opacity: 0.7,
+                dashArray: conn.relationshipType === 'KNOWS' ? '5, 8' : 
+                           conn.relationshipType === 'SAME_ADDRESS' ? '2, 4' : null
+            });
+
+            line.bindPopup(`
+                <div style="min-width:180px;">
+                    <h4 style="margin:0 0 5px;color:#333;">${conn.relationshipType.replace(/_/g, ' ')}</h4>
+                    <p style="margin:2px 0;"><strong>From:</strong> ${conn.from.name} (${conn.from.entityType})</p>
+                    <p style="margin:2px 0;"><strong>To:</strong> ${conn.to.name} (${conn.to.entityType})</p>
+                </div>
+            `);
+
+            // Add directional arrow
+            const arrowHead = L.polylineDecorator ? null : null; // decorators optional
+            linesGroup.addLayer(line);
+        });
+
+        linesGroup.addTo(leafletMap);
+        leafletLayers.push(linesGroup);
+    } catch (error) {
+        console.error('Error loading connections:', error);
     }
 }
 
