@@ -204,35 +204,221 @@ async function loadMetrics() {
     }
 }
 
-// ===== Geospatial (Mapbox) =====
+// ===== Geospatial (Mapbox + Leaflet/OpenStreetMap fallback) =====
+let mapProvider = null; // 'mapbox' or 'leaflet'
+let leafletMap = null;
+let leafletLayers = [];
+
 async function initMap() {
     try {
         const configResponse = await fetch(`${API_BASE}/api/geospatial/config`);
         const config = await configResponse.json();
         
-        mapboxgl.accessToken = config.accessToken;
-        
-        map = new mapboxgl.Map({
-            container: 'map-container',
-            style: config.style,
-            center: config.center,
-            zoom: config.zoom
-        });
+        const hasValidToken = config.accessToken && 
+            config.accessToken !== 'YOUR_MAPBOX_ACCESS_TOKEN' && 
+            config.accessToken.startsWith('pk.');
 
-        map.addControl(new mapboxgl.NavigationControl());
-        map.addControl(new mapboxgl.ScaleControl());
-
-        map.on('load', () => {
-            loadMapData('entities');
-        });
+        if (hasValidToken) {
+            await initMapbox(config);
+        } else {
+            initLeaflet(config);
+        }
     } catch (error) {
-        console.error('Error initializing map:', error);
-        document.getElementById('map-container').innerHTML = 
-            '<div class="placeholder"><h3>Map Configuration Required</h3><p>Set your Mapbox access token in appsettings.json</p></div>';
+        console.error('Error initializing map, falling back to Leaflet:', error);
+        initLeaflet({ center: [-87.6298, 41.8781], zoom: 10 });
     }
 }
 
+async function initMapbox(config) {
+    mapProvider = 'mapbox';
+    mapboxgl.accessToken = config.accessToken;
+    
+    map = new mapboxgl.Map({
+        container: 'map-container',
+        style: config.style,
+        center: config.center,
+        zoom: config.zoom
+    });
+
+    map.addControl(new mapboxgl.NavigationControl());
+    map.addControl(new mapboxgl.ScaleControl());
+
+    map.on('load', () => {
+        loadMapData('entities');
+    });
+}
+
+function initLeaflet(config) {
+    mapProvider = 'leaflet';
+    const container = document.getElementById('map-container');
+    container.innerHTML = '';
+    
+    const center = Array.isArray(config.center) ? [config.center[1], config.center[0]] : [41.8781, -87.6298];
+    const zoom = config.zoom || 10;
+
+    leafletMap = L.map('map-container', {
+        zoomControl: true
+    }).setView(center, zoom);
+
+    // OpenStreetMap tiles (no token required)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+    }).addTo(leafletMap);
+
+    // Add dark tile layer option
+    const darkTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
+        maxZoom: 19
+    });
+    darkTiles.addTo(leafletMap);
+
+    // Force a resize after init
+    setTimeout(() => { leafletMap.invalidateSize(); }, 100);
+
+    loadMapData('entities');
+}
+
 async function loadMapData(layer) {
+    if (mapProvider === 'mapbox') {
+        await loadMapDataMapbox(layer);
+    } else if (mapProvider === 'leaflet') {
+        await loadMapDataLeaflet(layer);
+    }
+}
+
+// --- Leaflet map data loading ---
+async function loadMapDataLeaflet(layer) {
+    if (!leafletMap) return;
+
+    // Clear existing layers
+    leafletLayers.forEach(l => leafletMap.removeLayer(l));
+    leafletLayers = [];
+
+    const entityType = document.getElementById('map-entity-type').value;
+
+    if (layer === 'entities') {
+        const url = entityType 
+            ? `${API_BASE}/api/geospatial/entities?type=${entityType}`
+            : `${API_BASE}/api/geospatial/entities`;
+        const response = await fetch(url);
+        const geoJson = await response.json();
+
+        const markers = L.markerClusterGroup();
+        
+        geoJson.features.forEach(feature => {
+            const coords = feature.geometry.coordinates;
+            const props = feature.properties;
+            const color = props.entityType === 'Provider' ? '#ff6b6b' : 
+                         props.entityType === 'Claimant' ? '#4ecdc4' : '#f39c12';
+            const radius = Math.max(8, (props.claimCount || 0) * 4 + 8);
+
+            const marker = L.circleMarker([coords[1], coords[0]], {
+                radius: radius,
+                fillColor: color,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+
+            marker.bindPopup(`
+                <div style="min-width:180px;">
+                    <h4 style="margin:0 0 5px;color:#333;">${props.name}</h4>
+                    <p style="margin:2px 0;"><strong>Type:</strong> ${props.entityType}</p>
+                    <p style="margin:2px 0;"><strong>Address:</strong> ${props.address || 'N/A'}</p>
+                    <p style="margin:2px 0;"><strong>Claims:</strong> ${props.claimCount} | <strong>Alerts:</strong> ${props.alertCount}</p>
+                </div>
+            `);
+
+            markers.addLayer(marker);
+        });
+
+        leafletMap.addLayer(markers);
+        leafletLayers.push(markers);
+
+        // Fit bounds to show all markers
+        if (geoJson.features.length > 0) {
+            const bounds = L.latLngBounds(
+                geoJson.features.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]])
+            );
+            leafletMap.fitBounds(bounds, { padding: [30, 30] });
+        }
+
+    } else if (layer === 'claims') {
+        const response = await fetch(`${API_BASE}/api/geospatial/claims`);
+        const geoJson = await response.json();
+
+        const markers = L.markerClusterGroup();
+
+        geoJson.features.forEach(feature => {
+            const coords = feature.geometry.coordinates;
+            const props = feature.properties;
+            const color = props.status === 'Investigating' ? '#ff8800' :
+                         props.status === 'Open' ? '#ffcc00' :
+                         props.status === 'Closed' ? '#44ff44' : '#95a5a6';
+            const radius = Math.max(6, (props.amount || 0) / 5000 + 6);
+
+            const marker = L.circleMarker([coords[1], coords[0]], {
+                radius: Math.min(radius, 25),
+                fillColor: color,
+                color: '#fff',
+                weight: 2,
+                opacity: 1,
+                fillOpacity: 0.8
+            });
+
+            marker.bindPopup(`
+                <div style="min-width:180px;">
+                    <h4 style="margin:0 0 5px;color:#333;">${props.claimNumber}</h4>
+                    <p style="margin:2px 0;"><strong>Status:</strong> ${props.status}</p>
+                    <p style="margin:2px 0;"><strong>Type:</strong> ${props.claimType}</p>
+                    <p style="margin:2px 0;"><strong>Amount:</strong> $${Number(props.amount).toLocaleString()}</p>
+                    <p style="margin:2px 0;"><strong>Date:</strong> ${new Date(props.incidentDate).toLocaleDateString()}</p>
+                    <p style="margin:2px 0;"><strong>Location:</strong> ${props.location || 'N/A'}</p>
+                </div>
+            `);
+
+            markers.addLayer(marker);
+        });
+
+        leafletMap.addLayer(markers);
+        leafletLayers.push(markers);
+
+        if (geoJson.features.length > 0) {
+            const bounds = L.latLngBounds(
+                geoJson.features.map(f => [f.geometry.coordinates[1], f.geometry.coordinates[0]])
+            );
+            leafletMap.fitBounds(bounds, { padding: [30, 30] });
+        }
+
+    } else if (layer === 'heatmap') {
+        const response = await fetch(`${API_BASE}/api/geospatial/heatmap`);
+        const heatData = await response.json();
+        
+        const heatPoints = heatData.map(d => [d.incidentLatitude, d.incidentLongitude, d.weight]);
+        
+        const heat = L.heatLayer(heatPoints, {
+            radius: 35,
+            blur: 20,
+            maxZoom: 15,
+            gradient: { 0.2: 'blue', 0.4: 'cyan', 0.6: 'lime', 0.8: 'yellow', 1.0: 'red' }
+        });
+
+        heat.addTo(leafletMap);
+        leafletLayers.push(heat);
+
+        if (heatData.length > 0) {
+            const bounds = L.latLngBounds(
+                heatData.map(d => [d.incidentLatitude, d.incidentLongitude])
+            );
+            leafletMap.fitBounds(bounds, { padding: [30, 30] });
+        }
+    }
+}
+
+// --- Mapbox map data loading ---
+async function loadMapDataMapbox(layer) {
     if (!map) return;
 
     // Remove existing layers/sources
@@ -271,7 +457,6 @@ async function loadMapData(layer) {
             }
         });
 
-        // Popup on click
         map.on('click', 'entities-layer', (e) => {
             const props = e.features[0].properties;
             new mapboxgl.Popup()
