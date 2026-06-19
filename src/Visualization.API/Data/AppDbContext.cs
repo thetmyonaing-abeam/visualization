@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<Entity> Entities { get; set; }
     public DbSet<Claim> Claims { get; set; }
     public DbSet<Alert> Alerts { get; set; }
+    public DbSet<Relationship> Relationships { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,6 +54,22 @@ public class AppDbContext : DbContext
             entity.HasOne(a => a.Claim)
                   .WithMany(c => c.Alerts)
                   .HasForeignKey(a => a.ClaimId);
+        });
+
+        modelBuilder.Entity<Relationship>(entity =>
+        {
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Type).HasMaxLength(50).IsRequired();
+            entity.HasIndex(r => r.Type);
+            entity.HasIndex(r => new { r.FromEntityId, r.ToEntityId });
+            entity.HasOne(r => r.FromEntity)
+                  .WithMany()
+                  .HasForeignKey(r => r.FromEntityId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(r => r.ToEntity)
+                  .WithMany()
+                  .HasForeignKey(r => r.ToEntityId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

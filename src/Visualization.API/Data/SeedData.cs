@@ -76,5 +76,31 @@ public static class SeedData
 
         context.Alerts.AddRange(alerts);
         await context.SaveChangesAsync();
+
+        // Relationships (for network visualization)
+        var relationships = new List<Relationship>
+        {
+            new() { FromEntityId = claimants[0].Id, ToEntityId = providers[0].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 3, 15) },
+            new() { FromEntityId = claimants[0].Id, ToEntityId = providers[1].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 3, 20) },
+            new() { FromEntityId = claimants[1].Id, ToEntityId = providers[0].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 4, 1) },
+            new() { FromEntityId = claimants[1].Id, ToEntityId = providers[2].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 4, 5) },
+            new() { FromEntityId = claimants[2].Id, ToEntityId = providers[3].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 2, 28) },
+            new() { FromEntityId = claimants[3].Id, ToEntityId = providers[2].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 5, 10) },
+            new() { FromEntityId = claimants[3].Id, ToEntityId = providers[4].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 5, 15) },
+            new() { FromEntityId = claimants[4].Id, ToEntityId = providers[1].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 5, 20) },
+            new() { FromEntityId = claimants[5].Id, ToEntityId = providers[0].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 6, 1) },
+            new() { FromEntityId = claimants[6].Id, ToEntityId = providers[1].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 6, 15) },
+            new() { FromEntityId = claimants[7].Id, ToEntityId = providers[4].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 6, 20) },
+            new() { FromEntityId = claimants[7].Id, ToEntityId = providers[2].Id, Type = "FILED_CLAIM_AT", CreatedAt = new DateTime(2024, 6, 22) },
+            new() { FromEntityId = providers[0].Id, ToEntityId = providers[4].Id, Type = "REFERRED_TO", CreatedAt = new DateTime(2024, 4, 10) },
+            new() { FromEntityId = providers[2].Id, ToEntityId = providers[4].Id, Type = "REFERRED_TO", CreatedAt = new DateTime(2024, 5, 20) },
+            new() { FromEntityId = providers[4].Id, ToEntityId = providers[0].Id, Type = "REFERRED_TO", CreatedAt = new DateTime(2024, 6, 1) },
+            new() { FromEntityId = claimants[0].Id, ToEntityId = claimants[3].Id, Type = "KNOWS", CreatedAt = new DateTime(2024, 5, 1) },
+            new() { FromEntityId = claimants[1].Id, ToEntityId = claimants[2].Id, Type = "KNOWS", CreatedAt = new DateTime(2024, 3, 1) },
+            new() { FromEntityId = claimants[3].Id, ToEntityId = claimants[5].Id, Type = "SAME_ADDRESS", CreatedAt = new DateTime(2024, 1, 1) },
+        };
+
+        context.Relationships.AddRange(relationships);
+        await context.SaveChangesAsync();
     }
 }
