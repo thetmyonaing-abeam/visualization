@@ -1,7 +1,7 @@
 // ===== Application State =====
 let network = null;
 let map = null;
-const API_BASE = '';
+const API_BASE = window.location.origin;
 
 // ===== Navigation =====
 document.querySelectorAll('.nav-btn').forEach(btn => {
