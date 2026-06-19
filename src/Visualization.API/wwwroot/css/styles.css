@@ -218,6 +218,52 @@ select[multiple] {
     border-radius: 2px;
 }
 
+.route-info {
+    margin-top: 8px;
+    padding: 10px 14px;
+    background: rgba(22, 33, 62, 0.9);
+    border: 1px solid #0f3460;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #e0e0e0;
+}
+
+.route-info h4 {
+    color: #00d4ff;
+    margin: 0 0 6px;
+}
+
+.route-info .route-stat {
+    display: inline-block;
+    margin-right: 16px;
+    font-weight: bold;
+}
+
+.route-info .route-steps {
+    margin-top: 8px;
+    max-height: 150px;
+    overflow-y: auto;
+    font-size: 12px;
+}
+
+.route-info .route-step {
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-secondary {
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-secondary:hover {
+    background: #444;
+}
+
 #timeline-container {
     flex: 1;
     overflow-y: auto;

@@ -102,6 +102,20 @@
                     <button id="btn-refresh-map" class="btn-primary">Refresh Map</button>
                 </div>
             </div>
+            <div class="toolbar" style="margin-top:8px;">
+                <h3>Driving Directions</h3>
+                <div class="controls">
+                    <select id="route-from">
+                        <option value="">From (select entity)</option>
+                    </select>
+                    <select id="route-to">
+                        <option value="">To (select entity)</option>
+                    </select>
+                    <button id="btn-get-route" class="btn-primary">Get Directions</button>
+                    <button id="btn-clear-route" class="btn-secondary">Clear Route</button>
+                </div>
+                <div id="route-info" class="route-info" style="display:none;"></div>
+            </div>
             <div id="map-container">
                 <div class="map-legend" id="map-legend">
                     <h4>Entities</h4>

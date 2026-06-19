@@ -246,6 +246,8 @@ async function initMapbox(config) {
     map.on('load', () => {
         loadMapData('entities');
     });
+
+    populateRouteSelectors();
 }
 
 function initLeaflet(config) {
@@ -277,6 +279,7 @@ function initLeaflet(config) {
     setTimeout(() => { leafletMap.invalidateSize(); }, 100);
 
     loadMapData('entities');
+    populateRouteSelectors();
 }
 
 async function loadMapData(layer) {
@@ -475,6 +478,157 @@ async function loadConnectionLines(entityTypeFilter) {
     } catch (error) {
         console.error('Error loading connections:', error);
     }
+}
+
+// --- Driving Directions (OSRM) ---
+let routeLayer = null;
+let routeMarkers = [];
+let entitiesCache = [];
+
+async function populateRouteSelectors() {
+    try {
+        const response = await fetch(`${API_BASE}/api/geospatial/entities`);
+        const geoJson = await response.json();
+        entitiesCache = geoJson.features;
+
+        const fromSelect = document.getElementById('route-from');
+        const toSelect = document.getElementById('route-to');
+
+        // Clear existing options (keep first placeholder)
+        fromSelect.innerHTML = '<option value="">From (select entity)</option>';
+        toSelect.innerHTML = '<option value="">To (select entity)</option>';
+
+        geoJson.features.forEach((feature, idx) => {
+            const name = feature.properties.name;
+            const type = feature.properties.entityType;
+            const optionHtml = `<option value="${idx}">${name} (${type})</option>`;
+            fromSelect.innerHTML += optionHtml;
+            toSelect.innerHTML += optionHtml;
+        });
+    } catch (error) {
+        console.error('Error populating route selectors:', error);
+    }
+}
+
+async function getRoute() {
+    const fromIdx = document.getElementById('route-from').value;
+    const toIdx = document.getElementById('route-to').value;
+
+    if (fromIdx === '' || toIdx === '') {
+        alert('Please select both From and To entities');
+        return;
+    }
+
+    if (fromIdx === toIdx) {
+        alert('Please select different entities');
+        return;
+    }
+
+    const fromFeature = entitiesCache[parseInt(fromIdx)];
+    const toFeature = entitiesCache[parseInt(toIdx)];
+
+    const fromCoords = fromFeature.geometry.coordinates; // [lng, lat]
+    const toCoords = toFeature.geometry.coordinates;
+
+    // Call OSRM routing API
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromCoords[0]},${fromCoords[1]};${toCoords[0]},${toCoords[1]}?overview=full&geometries=geojson&steps=true`;
+
+    try {
+        const response = await fetch(osrmUrl);
+        const data = await response.json();
+
+        if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
+            alert('No route found between these locations');
+            return;
+        }
+
+        const route = data.routes[0];
+        const routeCoords = route.geometry.coordinates.map(c => [c[1], c[0]]); // Convert to [lat, lng]
+
+        // Clear previous route
+        clearRoute();
+
+        // Draw route polyline
+        routeLayer = L.polyline(routeCoords, {
+            color: '#00d4ff',
+            weight: 5,
+            opacity: 0.8
+        }).addTo(leafletMap);
+
+        // Add start marker (green)
+        const startMarker = L.marker([fromCoords[1], fromCoords[0]], {
+            icon: L.divIcon({
+                className: 'route-marker-start',
+                html: '<div style="background:#2ecc71;width:14px;height:14px;border-radius:50%;border:3px solid #fff;"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        }).addTo(leafletMap).bindPopup(`<b>Start:</b> ${fromFeature.properties.name}`);
+
+        // Add end marker (red)
+        const endMarker = L.marker([toCoords[1], toCoords[0]], {
+            icon: L.divIcon({
+                className: 'route-marker-end',
+                html: '<div style="background:#e74c3c;width:14px;height:14px;border-radius:50%;border:3px solid #fff;"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        }).addTo(leafletMap).bindPopup(`<b>End:</b> ${toFeature.properties.name}`);
+
+        routeMarkers = [startMarker, endMarker];
+
+        // Fit map to route
+        leafletMap.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+        // Show route info
+        const distance = (route.distance / 1000).toFixed(1); // km
+        const duration = Math.ceil(route.duration / 60); // minutes
+        const steps = route.legs[0].steps;
+
+        const routeInfo = document.getElementById('route-info');
+        routeInfo.style.display = 'block';
+        routeInfo.innerHTML = `
+            <h4>Route: ${fromFeature.properties.name} → ${toFeature.properties.name}</h4>
+            <span class="route-stat">📍 ${distance} km</span>
+            <span class="route-stat">⏱️ ${duration} min</span>
+            <div class="route-steps">
+                ${steps.filter(s => s.maneuver.type !== 'arrive' || s.distance > 0).map(s => `
+                    <div class="route-step">
+                        ${getManeuverIcon(s.maneuver.type)} ${s.maneuver.instruction || s.name || s.maneuver.type}
+                        <span style="color:#888;margin-left:8px;">${(s.distance/1000).toFixed(1)} km</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error getting route:', error);
+        alert('Error fetching driving directions. Please try again.');
+    }
+}
+
+function getManeuverIcon(type) {
+    const icons = {
+        'turn': '↪️',
+        'new name': '➡️',
+        'depart': '🚗',
+        'arrive': '🏁',
+        'merge': '🔀',
+        'fork': '🔱',
+        'roundabout': '🔄',
+        'rotary': '🔄',
+        'continue': '⬆️'
+    };
+    return icons[type] || '➡️';
+}
+
+function clearRoute() {
+    if (routeLayer) {
+        leafletMap.removeLayer(routeLayer);
+        routeLayer = null;
+    }
+    routeMarkers.forEach(m => leafletMap.removeLayer(m));
+    routeMarkers = [];
+    document.getElementById('route-info').style.display = 'none';
 }
 
 // --- Mapbox map data loading ---
@@ -802,6 +956,8 @@ document.getElementById('btn-refresh-map').addEventListener('click', () => {
 document.getElementById('map-layer-select').addEventListener('change', (e) => {
     loadMapData(e.target.value);
 });
+document.getElementById('btn-get-route').addEventListener('click', getRoute);
+document.getElementById('btn-clear-route').addEventListener('click', clearRoute);
 document.getElementById('btn-refresh-temporal').addEventListener('click', loadTimeline);
 document.getElementById('btn-pbi-geospatial').addEventListener('click', () => loadPowerBIReport('geospatial'));
 document.getElementById('btn-pbi-temporal').addEventListener('click', () => loadPowerBIReport('temporal'));
