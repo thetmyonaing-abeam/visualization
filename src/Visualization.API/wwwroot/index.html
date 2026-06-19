@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investigation Visualization Platform</title>
+    
+    <!-- vis-network.js -->
+    <script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"></script>
+    
+    <!-- Mapbox GL JS -->
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    
+    <!-- Leaflet (OpenStreetMap fallback) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    
+    <!-- Power BI JavaScript SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/powerbi-client@2.22.0/dist/powerbi.min.js"></script>
+    
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Investigation Visualization Platform</h1>
+        <nav>
+            <button class="nav-btn active" data-view="network">Network Analysis</button>
+            <button class="nav-btn" data-view="geospatial">Geospatial View</button>
+            <button class="nav-btn" data-view="temporal">Temporal Analysis</button>
+            <button class="nav-btn" data-view="powerbi">Power BI Reports</button>
+            <button class="nav-btn" data-view="dashboard">Dashboard</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Network Analysis View -->
+        <section id="network-view" class="view active">
+            <div class="toolbar">
+                <h2>Network Visualization</h2>
+                <div class="controls">
+                    <select id="entity-type-filter" multiple>
+                        <option value="Provider">Providers</option>
+                        <option value="Claimant">Claimants</option>
+                        <option value="Policy">Policies</option>
+                    </select>
+                    <select id="relationship-filter">
+                        <option value="">All Relationships</option>
+                        <option value="FILED_CLAIM_AT">Filed Claim At</option>
+                        <option value="REFERRED_TO">Referred To</option>
+                        <option value="KNOWS">Knows</option>
+                        <option value="SAME_ADDRESS">Same Address</option>
+                    </select>
+                    <input type="number" id="depth-filter" placeholder="Depth" value="2" min="1" max="5">
+                    <button id="btn-refresh-network" class="btn-primary">Refresh</button>
+                    <button id="btn-metrics" class="btn-secondary">Show Metrics</button>
+                    <button id="btn-seed-neo4j" class="btn-secondary">Seed Data</button>
+                </div>
+                <div class="path-analysis">
+                    <h3>Path Analysis</h3>
+                    <input type="text" id="path-from" placeholder="From Entity ID (e.g., C1)">
+                    <input type="text" id="path-to" placeholder="To Entity ID (e.g., P1)">
+                    <button id="btn-find-path" class="btn-primary">Find Shortest Path</button>
+                </div>
+                <div class="time-filter">
+                    <h3>Time-Based Analysis</h3>
+                    <input type="date" id="network-start-date" value="2024-01-01">
+                    <input type="date" id="network-end-date" value="2024-12-31">
+                    <button id="btn-time-filter" class="btn-primary">Apply</button>
+                </div>
+            </div>
+            <div id="network-container"></div>
+            <div id="metrics-panel" class="panel hidden">
+                <h3>Network Metrics</h3>
+                <div id="metrics-content"></div>
+            </div>
+            <div id="node-details" class="panel hidden">
+                <h3>Node Details</h3>
+                <div id="node-details-content"></div>
+            </div>
+        </section>
+
+        <!-- Geospatial View -->
+        <section id="geospatial-view" class="view hidden">
+            <div class="toolbar">
+                <h2>Geospatial Visualization</h2>
+                <div class="controls">
+                    <select id="map-layer-select">
+                        <option value="entities">Entity Locations</option>
+                        <option value="claims">Claim Incidents</option>
+                        <option value="heatmap">Claim Heatmap</option>
+                    </select>
+                    <select id="map-entity-type">
+                        <option value="">All Types</option>
+                        <option value="Provider">Providers</option>
+                        <option value="Claimant">Claimants</option>
+                    </select>
+                    <button id="btn-refresh-map" class="btn-primary">Refresh Map</button>
+                </div>
+            </div>
+            <div class="toolbar" style="margin-top:8px;">
+                <h3>Driving Directions</h3>
+                <div class="controls">
+                    <select id="route-from">
+                        <option value="">From (select entity)</option>
+                    </select>
+                    <select id="route-to">
+                        <option value="">To (select entity)</option>
+                    </select>
+                    <button id="btn-get-route" class="btn-primary">Get Directions</button>
+                    <button id="btn-clear-route" class="btn-secondary">Clear Route</button>
+                </div>
+                <div id="route-info" class="route-info" style="display:none;"></div>
+            </div>
+            <div id="map-container">
+                <div class="map-legend" id="map-legend">
+                    <h4>Entities</h4>
+                    <div class="map-legend-item"><span class="map-legend-dot" style="background:#ff6b6b;"></span> Provider</div>
+                    <div class="map-legend-item"><span class="map-legend-dot" style="background:#4ecdc4;"></span> Claimant</div>
+                    <div class="map-legend-item"><span class="map-legend-dot" style="background:#f39c12;"></span> Policy</div>
+                    <h4 style="margin-top:8px;">Connections</h4>
+                    <div class="map-legend-item"><span class="map-legend-line" style="background:#ff6b6b;"></span> Filed Claim At</div>
+                    <div class="map-legend-item"><span class="map-legend-line" style="background:#f39c12;"></span> Referred To</div>
+                    <div class="map-legend-item"><span class="map-legend-line" style="background:#4ecdc4; border-style:dashed;"></span> Knows</div>
+                    <div class="map-legend-item"><span class="map-legend-line" style="background:#9b59b6; border-style:dotted;"></span> Same Address</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Temporal View -->
+        <section id="temporal-view" class="view hidden">
+            <div class="toolbar">
+                <h2>Temporal Analysis</h2>
+                <div class="controls">
+                    <input type="date" id="temporal-start" value="2024-01-01">
+                    <input type="date" id="temporal-end" value="2024-12-31">
+                    <select id="temporal-period">
+                        <option value="month">Monthly</option>
+                        <option value="week">Weekly</option>
+                        <option value="day">Daily</option>
+                    </select>
+                    <button id="btn-refresh-temporal" class="btn-primary">Refresh</button>
+                </div>
+            </div>
+            <div id="timeline-container">
+                <div id="claims-timeline" class="timeline-section">
+                    <h3>Claims Timeline</h3>
+                    <div id="claims-timeline-content"></div>
+                </div>
+                <div id="alerts-timeline" class="timeline-section">
+                    <h3>Alerts Timeline</h3>
+                    <div id="alerts-timeline-content"></div>
+                </div>
+                <div id="activity-summary" class="timeline-section">
+                    <h3>Activity Summary</h3>
+                    <div id="activity-summary-content"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Power BI View -->
+        <section id="powerbi-view" class="view hidden">
+            <div class="toolbar">
+                <h2>Power BI Reports</h2>
+                <div class="controls">
+                    <button id="btn-pbi-geospatial" class="btn-primary">Geospatial Report</button>
+                    <button id="btn-pbi-temporal" class="btn-secondary">Temporal Report</button>
+                </div>
+            </div>
+            <div id="powerbi-container">
+                <div id="powerbi-embed"></div>
+                <div id="powerbi-placeholder" class="placeholder">
+                    <h3>Power BI Integration</h3>
+                    <p>Configure Power BI settings in appsettings.json to embed reports.</p>
+                    <p>Required settings:</p>
+                    <ul>
+                        <li>TenantId - Azure AD Tenant ID</li>
+                        <li>ClientId - Azure AD App Registration Client ID</li>
+                        <li>ClientSecret - Azure AD App Secret</li>
+                        <li>WorkspaceId - Power BI Workspace ID</li>
+                        <li>GeospatialReportId - Report ID for geospatial visualization</li>
+                        <li>TemporalReportId - Report ID for temporal visualization</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dashboard View -->
+        <section id="dashboard-view" class="view hidden">
+            <div class="toolbar">
+                <h2>Dashboard</h2>
+                <div class="controls">
+                    <button id="btn-seed-mysql" class="btn-secondary">Seed MySQL Data</button>
+                </div>
+            </div>
+            <div id="dashboard-container">
+                <div class="stats-grid" id="stats-grid"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
